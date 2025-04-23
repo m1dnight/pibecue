@@ -1,0 +1,50 @@
+<div class="mx-auto p-10">
+    <!-- Metrics Bar - Using Flexbox -->
+    <div class="justify-center m-2">
+        <div class="flex flex-row gap-4">
+            <!-- Metric 1 -->
+            <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow">
+            <p class="text-sm text-gray-500 uppercase">Temperature</p>
+            <p class="text-2xl font-bold"><%= Float.ceil(@system_state.temperature, 2) %>°C</p>
+            </div>
+
+            <!-- Metric 2 -->
+            <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow">
+                <p class="text-sm text-gray-500 uppercase">RPM</p>
+                <p class="text-2xl font-bold"><%= trunc(@system_state.fan_speed) %> RPM</p>
+            </div>
+
+            <!-- Metric 2 -->
+            <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow">
+                <p class="text-sm text-gray-500 uppercase">Target Temperature</p>
+                <p class="text-2xl font-bold"><%= Float.ceil(@system_state.target_temperature, 2) %>°C</p>
+            </div>
+
+            <!-- Metric 2 -->
+            <div class="flex-1 bg-white p-2 rounded shadow">
+                <p class="text-sm text-gray-500 uppercase">Temp Control</p>
+                <p class="text-2xl font-bold">
+                    <.simple_form for={%{}} phx-change="rpm-change">
+                        <.input type="number" name="temperature" value={Float.ceil(@system_state.target_temperature, 2)} min="0" max="100" phx-change="temperature">
+                        </.input>
+                    </.simple_form>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 m-2">
+        <!-- Temperature chart -->
+        <div class="bg-white p-2 rounded shadow">
+        <h2 class="text-lg font-semibold mb-2">Temperature</h2>
+        <%= build_pointplot(@session_data, ["temperature", "target_temperature"], "Temperature (Celcius)") %>
+        </div>
+        <!-- Fan Speed -->
+        <div class="bg-white p-2 rounded shadow">
+        <h2 class="text-lg font-semibold mb-2">Fan Speed</h2>
+        <%= build_pointplot(@session_data, ["fan_speed"], "Speed (RPM)") %>
+        </div>
+
+    </div>
+</div>
