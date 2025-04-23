@@ -1,0 +1,89 @@
+<div class="mx-auto p-10">
+  <!-- Metrics Bar - Using Flexbox -->
+  <div class="justify-center m-2">
+    <div class="grid grid-cols-2 lg:grid-cols-6 gap-4 m-2">
+      
+<!-- Temperature -->
+      <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow vertical-align">
+        <p class="text-sm text-gray-500 uppercase">Temperature</p>
+        <p class="text-2xl font-bold my-5 text-center">{Float.ceil(@system_state.temperature, 2)}°C</p>
+      </div>
+      
+<!-- RPM -->
+      <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow content-center">
+        <p class="text-sm text-gray-500 uppercase content-center">RPM</p>
+        <p class="text-2xl font-bold text-center">{trunc(@system_state.fan_speed)} RPM</p>
+      </div>
+      
+<!-- Target Temperature -->
+      <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow">
+        <p class="text-sm text-gray-500 uppercase">Target Temperature</p>
+        <p class="text-2xl font-bold my-5 text-center">{Float.ceil(@system_state.target_temperature, 2)}°C</p>
+      </div>
+      
+<!-- Temp Control -->
+      <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow">
+        <p class="text-sm text-gray-500 uppercase">Temp Control</p>
+        <p class="text-2xl font-bold my-5">
+          <.simple_form for={%{}} phx-change="rpm-change">
+            <.input
+              type="number"
+              name="temperature"
+              value={Float.ceil(@system_state.target_temperature, 2)}
+              min="0"
+              max="100"
+              phx-change="temperature"
+            >
+            </.input>
+          </.simple_form>
+        </p>
+      </div>
+      
+<!-- Toggle -->
+      <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow">
+        <p class="text-sm text-gray-500 uppercase">PID Control</p>
+        <p class="text-2xl font-bold my-5 ">
+          <.simple_form for={%{}} phx-change="toggle-control">
+            <div class="flex justify-items-center">
+              <label class="cursor-pointer mx-auto">
+                <input type="hidden" name="pid-control" value="false" />
+                <input
+                  id="pid-control"
+                  name="pid-control"
+                  type="checkbox"
+                  value="true"
+                  class="sr-only peer"
+                  {[value: true, checked: @pid_on?]}
+                />
+                <div class="relative w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 dark:peer-checked:bg-blue-600">
+                </div>
+                <span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300"></span>
+              </label>
+            </div>
+          </.simple_form>
+        </p>
+      </div>
+      
+<!-- Summary -->
+      <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow">
+        <p class="text-sm text-gray-500 uppercase">Summary</p>
+        <p>Start {Timex.format!(DateTime.utc_now(), "{YYYY}-{0M}-{0D} {h24}-{m}")}</p>
+        <p>Duration {Timex.format_duration(Timex.diff(DateTime.utc_now(), @session_start, :duration), :humanized)}</p>
+      </div>
+    </div>
+  </div>
+  
+<!-- Chart Grid -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 m-2">
+    <!-- Temperature chart -->
+    <div class="bg-white p-2 rounded shadow">
+      <h2 class="text-lg font-semibold mb-2">Temperature</h2>
+      {build_pointplot(@session_data, ["temperature", "target_temperature"], "Temperature (Celcius)")}
+    </div>
+    <!-- Fan Speed -->
+    <div class="bg-white p-2 rounded shadow">
+      <h2 class="text-lg font-semibold mb-2">Fan Speed</h2>
+      {build_pointplot(@session_data, ["fan_speed"], "Speed (RPM)")}
+    </div>
+  </div>
+</div>
