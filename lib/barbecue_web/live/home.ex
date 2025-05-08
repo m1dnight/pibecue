@@ -12,17 +12,17 @@ defmodule BarbecueWeb.Home do
   def mount(_params, _session, socket) do
     PubSub.subscribe(Barbecue.PubSub, "system_state")
     PubSub.subscribe(Barbecue.PubSub, "pid")
-    session_data = Barbecue.Storage.States.last_session()
-
-    session_start = Enum.min_by(session_data, & &1.time)
 
     socket =
       socket
-      |> assign(:session_data, session_data)
       |> assign(:system_state, %State{temperature: 0.0, fan_speed: 0.0, target_temperature: 0.0})
       |> assign(:fan_speed, 0.0)
       |> assign(:pid_on?, Controller.on?())
-      |> assign(:session_start, session_start.time)
+      |> assign_async([:session_data, :session_start], fn ->
+        session_data = Barbecue.Storage.States.last_session()
+        session_start = Enum.min_by(session_data, & &1.time, fn -> %{time: DateTime.utc_now()} end)
+        {:ok, %{session_data: session_data, session_start: session_start.time}}
+      end)
 
     {:ok, socket}
   end
@@ -33,27 +33,34 @@ defmodule BarbecueWeb.Home do
   end
 
   def handle_info({:system_state, system_state}, socket) do
-    # overwrite the data in the bucket with the latest measurements
-    minute = Timex.set(system_state.inserted_at, second: 0, microsecond: 0)
-
-    session_data =
-      Enum.map(socket.assigns.session_data, fn data ->
-        if data.time == minute do
-          %{
-            data
-            | fan_speed: system_state.fan_speed,
-              target_temperature: system_state.target_temperature,
-              temperature: system_state.temperature
-          }
-        else
-          data
-        end
-      end)
+    session_data_async = socket.assigns.session_data
 
     socket =
-      socket
-      |> assign(:system_state, system_state)
-      |> assign(:session_data, session_data)
+      if session_data_async.ok? do
+        session_data = session_data_async.result
+        # overwrite the data in the bucket with the latest measurements
+        minute = Timex.set(system_state.inserted_at, second: 0, microsecond: 0)
+
+        session_data =
+          Enum.map(session_data, fn data ->
+            if data.time == minute do
+              %{
+                data
+                | fan_speed: system_state.fan_speed,
+                  target_temperature: system_state.target_temperature,
+                  temperature: system_state.temperature
+              }
+            else
+              data
+            end
+          end)
+
+        socket
+        |> assign(:system_state, system_state)
+        |> assign(:session_data, %{session_data_async | result: session_data})
+      else
+        socket
+      end
 
     {:noreply, socket}
   end
