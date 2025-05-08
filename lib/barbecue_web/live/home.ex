@@ -114,7 +114,8 @@ defmodule BarbecueWeb.Home do
     options = [
       custom_x_formatter: fn x -> Timex.format!(x, "{h24}:{m}") end,
       colour_palette: ["32CD32", "8B0000"],
-      mapping: %{x_col: "time", y_cols: keys}
+      mapping: %{x_col: "time", y_cols: keys},
+      legend_setting: :legend_bottom
     ]
 
     dataset = Dataset.new(session_data, ["time" | keys])
