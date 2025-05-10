@@ -9,12 +9,12 @@ defmodule Barbecue.Application do
   def start(_type, _args) do
     children =
       [
-        # {Phoenix.PubSub, name: Barbecue.PubSub},
-        # Barbecue.Repo,
-        # Barbecue.Controller,
-        # BarbecueWeb.Telemetry,
-        # BarbecueWeb.Endpoint,
-        # Barbecue.Monitor
+        {Phoenix.PubSub, name: Barbecue.PubSub},
+        Barbecue.Repo,
+        Barbecue.Controller,
+        BarbecueWeb.Telemetry,
+        BarbecueWeb.Endpoint,
+        Barbecue.Monitor
       ] ++ children(target())
 
     # See https://hexdocs.pm/elixir/Supervisor.html
@@ -33,8 +33,8 @@ defmodule Barbecue.Application do
 
   def children(_target) do
     [
-      # Barbecue.IO.Fanspeed.Real,
-      # Barbecue.IO.Thermocouple.Real
+      Barbecue.IO.Fanspeed.Real,
+      Barbecue.IO.Thermocouple.Real
     ]
   end
 
