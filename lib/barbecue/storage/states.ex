@@ -26,6 +26,58 @@ defmodule Barbecue.Storage.States do
   end
 
   @doc """
+  Returns measurements from the last `window_seconds`, bucketed into
+  `bucket_seconds`-wide buckets and averaged within each bucket.
+  """
+  @spec recent(pos_integer(), pos_integer()) :: [
+          %{
+            time: DateTime.t(),
+            fan_speed: float(),
+            temperature: float(),
+            target_temperature: float()
+          }
+        ]
+  def recent(window_seconds \\ 1800, bucket_seconds \\ 10) do
+    cutoff = DateTime.utc_now() |> DateTime.add(-window_seconds, :second)
+
+    query =
+      from(s in State,
+        where: s.inserted_at >= ^cutoff,
+        select: %{
+          inserted_at: s.inserted_at,
+          fan_speed: s.fan_speed,
+          temperature: s.temperature,
+          target_temperature: s.target_temperature
+        }
+      )
+
+    Repo.all(query)
+    |> Enum.group_by(&bucket_time(&1.inserted_at, bucket_seconds))
+    |> Enum.map(&aggregate_bucket/1)
+    |> Enum.sort_by(& &1.time, {:asc, DateTime})
+  end
+
+  @doc """
+  Truncates a DateTime to the start of its `bucket_seconds`-wide bucket.
+  """
+  @spec bucket_time(DateTime.t(), pos_integer()) :: DateTime.t()
+  def bucket_time(dt, bucket_seconds) do
+    unix = DateTime.to_unix(dt)
+    DateTime.from_unix!(div(unix, bucket_seconds) * bucket_seconds)
+  end
+
+  defp aggregate_bucket({bucket, items}) do
+    count = length(items)
+
+    %{
+      time: bucket,
+      fan_speed: Enum.sum_by(items, & &1.fan_speed) / count,
+      temperature: Enum.sum_by(items, & &1.temperature) / count,
+      target_temperature: Enum.sum_by(items, & &1.target_temperature) / count
+    }
+  end
+
+  @doc """
   Returns all the latest measurements that are close to eachother, and thus are in the same session.
   """
   @spec last_session :: [%{time: DateTime.t(), fan_speed: float(), temperature: float()}]

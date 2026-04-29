@@ -6,7 +6,11 @@ defmodule BarbecueWeb.Home do
   alias Contex.Plot
   alias Phoenix.PubSub
   alias Barbecue.Storage.State
+  alias Barbecue.Storage.States
   alias Barbecue.Controller
+
+  @window_seconds 1800
+  @bucket_seconds 10
 
   @impl true
   def mount(_params, _session, socket) do
@@ -16,12 +20,20 @@ defmodule BarbecueWeb.Home do
     socket =
       socket
       |> assign(:system_state, %State{temperature: 0.0, fan_speed: 0.0, target_temperature: 0.0})
+      |> assign(:previous_temperature, nil)
+      |> assign(:trend, :flat)
       |> assign(:fan_speed, 0.0)
       |> assign(:pid_on?, Controller.on?())
       |> assign_async([:session_data, :session_start], fn ->
-        session_data = Barbecue.Storage.States.last_session()
-        session_start = Enum.min_by(session_data, & &1.time, fn -> %{time: DateTime.utc_now()} end)
-        {:ok, %{session_data: session_data, session_start: session_start.time}}
+        session_data = States.recent(@window_seconds, @bucket_seconds)
+
+        session_start =
+          case session_data do
+            [] -> DateTime.utc_now()
+            [first | _] -> first.time
+          end
+
+        {:ok, %{session_data: session_data, session_start: session_start}}
       end)
 
     {:ok, socket}
@@ -37,36 +49,66 @@ defmodule BarbecueWeb.Home do
 
     socket =
       if session_data_async.ok? do
-        session_data = session_data_async.result
-        # overwrite the data in the bucket with the latest measurements
-        minute = Timex.set(system_state.inserted_at, second: 0, microsecond: 0)
+        bucket = States.bucket_time(system_state.inserted_at, @bucket_seconds)
+        cutoff = DateTime.add(DateTime.utc_now(), -@window_seconds, :second)
 
         session_data =
-          Enum.map(session_data, fn data ->
-            if data.time == minute do
-              %{
-                data
-                | fan_speed: system_state.fan_speed,
-                  target_temperature: system_state.target_temperature,
-                  temperature: system_state.temperature
-              }
-            else
-              data
-            end
-          end)
+          session_data_async.result
+          |> upsert_bucket(bucket, system_state)
+          |> Enum.filter(&(DateTime.compare(&1.time, cutoff) != :lt))
 
         socket
-        |> assign(:system_state, system_state)
         |> assign(:session_data, %{session_data_async | result: session_data})
       else
         socket
       end
 
+    socket =
+      socket
+      |> assign(:trend, compute_trend(socket.assigns.previous_temperature, system_state.temperature))
+      |> assign(:previous_temperature, system_state.temperature)
+      |> assign(:system_state, system_state)
+
     {:noreply, socket}
   end
 
+  defp upsert_bucket(buckets, time, system_state) do
+    case Enum.find_index(buckets, &(&1.time == time)) do
+      nil ->
+        buckets ++
+          [
+            %{
+              time: time,
+              fan_speed: system_state.fan_speed,
+              temperature: system_state.temperature,
+              target_temperature: system_state.target_temperature
+            }
+          ]
+
+      idx ->
+        List.update_at(buckets, idx, fn bucket ->
+          %{
+            bucket
+            | fan_speed: system_state.fan_speed,
+              temperature: system_state.temperature,
+              target_temperature: system_state.target_temperature
+          }
+        end)
+    end
+  end
+
+  defp compute_trend(nil, _current), do: :flat
+
+  defp compute_trend(previous, current) do
+    cond do
+      current - previous > 0.2 -> :up
+      previous - current > 0.2 -> :down
+      true -> :flat
+    end
+  end
+
   @impl true
-  def handle_event(_, %{"temperature" => temperature}, socket) do
+  def handle_event("temperature", %{"temperature" => temperature}, socket) do
     case Integer.parse(temperature) do
       {temperature, ""} ->
         Controller.set_target_temperature(temperature * 1.0)
@@ -75,6 +117,13 @@ defmodule BarbecueWeb.Home do
       _ ->
         {:noreply, socket}
     end
+  end
+
+  def handle_event("target-bump", %{"by" => by}, socket) do
+    delta = String.to_integer(by)
+    new_target = max(0, min(300, trunc(socket.assigns.system_state.target_temperature) + delta))
+    Controller.set_target_temperature(new_target * 1.0)
+    {:noreply, socket}
   end
 
   def handle_event("toggle-control", %{"pid-control" => on?}, socket) do
@@ -93,15 +142,32 @@ defmodule BarbecueWeb.Home do
   #                           Helpers                        #
   ############################################################
 
-  defp build_pointplot([], _, _), do: ""
+  def format_delta(delta) when delta > 0, do: "+#{Float.round(delta, 1)}°C"
+  def format_delta(delta), do: "#{Float.round(delta, 1)}°C"
 
-  defp build_pointplot(session_data, keys, label) do
-    # prepare the data for contex
-    # it expects a list of maps with string keys
-    # and it must be ordered
+  def trend_icon(:up), do: "hero-arrow-trending-up"
+  def trend_icon(:down), do: "hero-arrow-trending-down"
+  def trend_icon(:flat), do: "hero-minus"
+
+  def trend_color(:up), do: "text-rose-500"
+  def trend_color(:down), do: "text-sky-500"
+  def trend_color(:flat), do: "text-slate-400"
+
+  def zone_color(temperature, target) do
+    cond do
+      target == 0.0 -> "text-slate-700"
+      abs(temperature - target) <= 5 -> "text-emerald-600"
+      abs(temperature - target) <= 15 -> "text-amber-500"
+      true -> "text-rose-600"
+    end
+  end
+
+  def build_pointplot([], _, _, _), do: ""
+
+  def build_pointplot(session_data, keys, label, palette) do
     session_data =
       session_data
-      |> Enum.sort_by(& &1.time, {:asc, Date})
+      |> Enum.sort_by(& &1.time, {:asc, DateTime})
       |> Enum.map(fn d ->
         %{
           "time" => d.time,
@@ -113,15 +179,45 @@ defmodule BarbecueWeb.Home do
 
     options = [
       custom_x_formatter: fn x -> Timex.format!(x, "{h24}:{m}") end,
-      colour_palette: ["32CD32", "8B0000"],
+      colour_palette: palette,
       mapping: %{x_col: "time", y_cols: keys},
-      legend_setting: :legend_bottom
+      legend_setting: :legend_none,
+      smoothed: false
     ]
 
     dataset = Dataset.new(session_data, ["time" | keys])
 
     Plot.new(dataset, LinePlot, 1000, 300, options)
-    |> Plot.axis_labels("Time", label)
+    |> Plot.axis_labels("", label)
     |> Plot.to_svg()
+    |> responsive_svg()
+  end
+
+  defp responsive_svg({:safe, iodata}), do: responsive_svg(IO.iodata_to_binary(iodata))
+
+  defp responsive_svg(svg) when is_binary(svg) do
+    svg
+    |> String.replace(
+      ~r/<svg([^>]*?)>/s,
+      fn match ->
+        cond do
+          String.contains?(match, "viewBox") ->
+            match
+
+          true ->
+            w = Regex.run(~r/width="(\d+)"/, match) |> List.last() || "1000"
+            h = Regex.run(~r/height="(\d+)"/, match) |> List.last() || "300"
+
+            match
+            |> String.replace(~r/width="\d+"/, ~s|width="100%"|)
+            |> String.replace(~r/height="\d+"/, ~s|height="100%"|)
+            |> String.replace(
+              ~r/<svg/,
+              ~s|<svg viewBox="0 0 #{w} #{h}" preserveAspectRatio="xMidYMid meet" style="display:block"|
+            )
+        end
+      end
+    )
+    |> Phoenix.HTML.raw()
   end
 end

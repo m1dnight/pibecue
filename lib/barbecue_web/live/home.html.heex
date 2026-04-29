@@ -1,95 +1,175 @@
-<div class="mx-auto p-10">
-  <!-- Metrics Bar - Using Flexbox -->
-  <div class="justify-center m-2">
-    <div class="grid grid-cols-2 lg:grid-cols-6 gap-4 m-2">
-      
-<!-- Temperature -->
-      <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow vertical-align">
-        <p class="text-sm text-gray-500 uppercase">Temperature</p>
-        <p class="text-2xl font-bold my-5 text-center">{Float.ceil(@system_state.temperature, 2)}°C</p>
+<div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
+
+<!-- Hero: current temperature -->
+  <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
+    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2 text-slate-500 text-sm uppercase tracking-wider">
+          <.icon name="hero-fire" class="h-4 w-4" /> Current
+        </div>
+        <div class="flex items-baseline gap-3 mt-1">
+          <span class={"text-6xl sm:text-7xl font-bold tabular-nums " <> zone_color(@system_state.temperature, @system_state.target_temperature)}>
+            {Float.round(@system_state.temperature, 1)}
+          </span>
+          <span class="text-2xl text-slate-400 font-medium">°C</span>
+          <.icon
+            name={trend_icon(@trend)}
+            class={"h-7 w-7 ml-1 " <> trend_color(@trend)}
+          />
+        </div>
       </div>
-      
-<!-- RPM -->
-      <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow content-center">
-        <p class="text-sm text-gray-500 uppercase content-center">RPM</p>
-        <p class="text-2xl font-bold text-center">{trunc(@system_state.fan_speed)} RPM</p>
-      </div>
-      
-<!-- Target Temperature -->
-      <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow">
-        <p class="text-sm text-gray-500 uppercase">Target Temperature</p>
-        <p class="text-2xl font-bold my-5 text-center">{Float.ceil(@system_state.target_temperature, 2)}°C</p>
-      </div>
-      
-<!-- Temp Control -->
-      <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow">
-        <p class="text-sm text-gray-500 uppercase">Temp Control</p>
-        <p class="text-2xl font-bold my-5">
-          <.simple_form for={%{}} phx-change="rpm-change">
-            <.input
-              type="number"
-              name="temperature"
-              value={Float.ceil(@system_state.target_temperature, 2)}
-              min="0"
-              max="100"
-              phx-change="temperature"
-            >
-            </.input>
-          </.simple_form>
-        </p>
-      </div>
-      
-<!-- Toggle -->
-      <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow">
-        <p class="text-sm text-gray-500 uppercase">PID Control</p>
-        <p class="text-2xl font-bold my-5 ">
-          <.simple_form for={%{}} phx-change="toggle-control">
-            <div class="flex justify-items-center">
-              <label class="cursor-pointer mx-auto">
-                <input type="hidden" name="pid-control" value="false" />
-                <input
-                  id="pid-control"
-                  name="pid-control"
-                  type="checkbox"
-                  value="true"
-                  class="sr-only peer"
-                  {[value: true, checked: @pid_on?]}
-                />
-                <div class="relative w-11 h-6 bg-gray-200 rounded-full peer peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600 dark:peer-checked:bg-blue-600">
-                </div>
-                <span class="ms-3 text-sm font-medium text-gray-900 dark:text-gray-300"></span>
-              </label>
-            </div>
-          </.simple_form>
-        </p>
-      </div>
-      
-<!-- Summary -->
-      <div class="sm:flex-1 flex-2 bg-white p-2 rounded shadow">
-        <p class="text-sm text-gray-500 uppercase">Summary</p>
-        <p :if={@session_start.ok?}>
-          Start {Timex.format!(@session_start.result, "{h24}:{m} {0D}-{0M}-{YYYY}")}
-        </p>
-        <p :if={@session_start.ok?}>
-          Duration {Timex.format_duration(Timex.diff(DateTime.utc_now(), @session_start.result, :duration), :humanized)}
-        </p>
+
+      <div class="text-right">
+        <div class="text-xs uppercase tracking-wider text-slate-500">Target</div>
+        <div class="text-3xl font-semibold text-slate-700 tabular-nums">
+          {Float.round(@system_state.target_temperature, 1)}<span class="text-slate-400">°C</span>
+        </div>
+        <div :if={@system_state.target_temperature > 0} class="text-sm text-slate-500 mt-1">
+          {format_delta(@system_state.temperature - @system_state.target_temperature)} from target
+        </div>
       </div>
     </div>
   </div>
-  
-<!-- Chart Grid -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 m-2">
-    
-<!-- Temperature chart -->
-    <div :if={@session_data.ok?} class="bg-white p-2 rounded shadow">
-      <h2 class="text-lg font-semibold mb-2">Temperature</h2>
-      {build_pointplot(@session_data.result, ["temperature", "target_temperature"], "Temperature (Celcius)")}
+
+<!-- Controls grid -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+<!-- Set target -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+      <div class="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wider">
+        <.icon name="hero-adjustments-horizontal" class="h-4 w-4" /> Set Target
+      </div>
+      <div class="mt-3 flex items-center gap-2">
+        <button
+          type="button"
+          phx-click="target-bump"
+          phx-value-by="-5"
+          class="flex-none w-12 h-12 rounded-xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 flex items-center justify-center touch-manipulation"
+          aria-label="Decrease target by 5"
+        >
+          <.icon name="hero-minus" class="h-6 w-6" />
+        </button>
+
+        <form phx-change="temperature" class="flex-1">
+          <input
+            type="number"
+            name="temperature"
+            inputmode="numeric"
+            value={trunc(@system_state.target_temperature)}
+            min="0"
+            max="300"
+            step="1"
+            phx-debounce="500"
+            class="w-full h-12 text-center text-2xl font-semibold tabular-nums rounded-xl border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
+          />
+        </form>
+
+        <button
+          type="button"
+          phx-click="target-bump"
+          phx-value-by="5"
+          class="flex-none w-12 h-12 rounded-xl bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 flex items-center justify-center touch-manipulation"
+          aria-label="Increase target by 5"
+        >
+          <.icon name="hero-plus" class="h-6 w-6" />
+        </button>
+      </div>
     </div>
-    
-<!-- Fan Speed -->
-    <div :if={@session_data.ok?} class="bg-white p-2 rounded shadow">
-      <h2 class="text-lg font-semibold mb-2">Fan Speed</h2>
-      {build_pointplot(@session_data.result, ["fan_speed"], "Speed (RPM)")}
+
+<!-- Fan RPM -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+      <div class="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wider">
+        <.icon name="hero-bolt" class="h-4 w-4" /> Fan
+      </div>
+      <div class="mt-2 flex items-baseline gap-2">
+        <span class="text-3xl font-semibold tabular-nums text-slate-800">
+          {trunc(@system_state.fan_speed)}
+        </span>
+        <span class="text-sm text-slate-400 font-medium">RPM</span>
+      </div>
+    </div>
+
+<!-- PID toggle -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+      <div class="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wider">
+        <.icon name="hero-cpu-chip" class="h-4 w-4" /> PID Control
+      </div>
+      <.simple_form for={%{}} phx-change="toggle-control" class="!mt-2 !space-y-0">
+        <label class="cursor-pointer flex items-center gap-3 mt-2">
+          <input type="hidden" name="pid-control" value="false" />
+          <input
+            id="pid-control"
+            name="pid-control"
+            type="checkbox"
+            value="true"
+            class="sr-only peer"
+            checked={@pid_on?}
+          />
+          <div class="relative w-12 h-7 bg-slate-200 rounded-full peer-checked:bg-emerald-500 peer-focus:ring-4 peer-focus:ring-emerald-200 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-6 after:w-6 after:shadow after:transition-transform peer-checked:after:translate-x-5">
+          </div>
+          <span class={"text-lg font-semibold " <> if(@pid_on?, do: "text-emerald-600", else: "text-slate-400")}>
+            {if @pid_on?, do: "ON", else: "OFF"}
+          </span>
+        </label>
+      </.simple_form>
+    </div>
+
+<!-- Session info -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+      <div class="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wider">
+        <.icon name="hero-clock" class="h-4 w-4" /> Session
+      </div>
+      <div :if={@session_start.ok?} class="mt-2 space-y-1">
+        <div class="text-sm text-slate-600">
+          Started {Timex.format!(@session_start.result, "{h24}:{m}")}
+        </div>
+        <div class="text-lg font-semibold text-slate-800">
+          {Timex.format_duration(
+            Timex.diff(DateTime.utc_now(), @session_start.result, :duration),
+            :humanized
+          )}
+        </div>
+      </div>
+      <div :if={!@session_start.ok?} class="mt-2 text-sm text-slate-400">Loading…</div>
+    </div>
+  </div>
+
+<!-- Charts -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div :if={@session_data.ok?} class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
+          <.icon name="hero-fire" class="h-5 w-5 text-rose-500" /> Temperature
+        </h2>
+        <div class="flex items-center gap-3 text-xs text-slate-500">
+          <span class="flex items-center gap-1">
+            <span class="inline-block w-3 h-0.5 bg-emerald-500 rounded"></span> actual
+          </span>
+          <span class="flex items-center gap-1">
+            <span class="inline-block w-3 h-0.5 bg-rose-700 rounded"></span> target
+          </span>
+        </div>
+      </div>
+      <div class="w-full">
+        {build_pointplot(
+          @session_data.result,
+          ["temperature", "target_temperature"],
+          "°C",
+          ["10b981", "be123c"]
+        )}
+      </div>
+    </div>
+
+    <div :if={@session_data.ok?} class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold text-slate-800 flex items-center gap-2">
+          <.icon name="hero-bolt" class="h-5 w-5 text-amber-500" /> Fan Speed
+        </h2>
+        <div class="text-xs text-slate-500">last 30 min</div>
+      </div>
+      <div class="w-full">
+        {build_pointplot(@session_data.result, ["fan_speed"], "RPM", ["f59e0b"])}
+      </div>
     </div>
   </div>
 </div>
