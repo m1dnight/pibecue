@@ -14,7 +14,7 @@ firmware: deps assets
 	mix firmware
 
 burn: firmware
-	mix firmware.burn -d /dev/rdisk8
+	mix firmware.burn -d /dev/rdisk17
 
 upload: firmware
 	mix upload barbecue.local

@@ -4,14 +4,21 @@ defmodule Barbecue.IO.Fanspeed.Real do
   alias Barbecue.IO.Fanspeed.Real, as: Fanspeed
   alias Circuits.GPIO
 
-  # gpio pin to set interrupts for pwm counter
   @gpio_rpm "GPIO24"
-  @gpio_pwm_control "GPIO16"
   @gpio_pwm_signal 12
+  @pwm_frequency_hz 10_000
 
-  defstruct rpm_gpio: nil, pwm_gpio: nil, rpms: [], last_timestamp: 0
+  # Reject pulses arriving within this window of the last accepted pulse.
+  # 4 ms easily passes a 5k-RPM fan (≈6.7 ms between falling edges) while
+  # filtering PWM-induced noise on the tach line.
+  @debounce_ns 4_000_000
 
-  # @behaviour Barbecue.IO.Fanspeed
+  # If no tach pulse has arrived for this long, treat the fan as stopped.
+  @stale_ns 500_000_000
+
+  @rpm_samples 20
+
+  defstruct rpm_gpio: nil, rpms: [], last_timestamp: nil
 
   def start_link(args \\ []) do
     Logger.debug("#{__MODULE__} start_link #{inspect(args)}")
@@ -45,83 +52,89 @@ defmodule Barbecue.IO.Fanspeed.Real do
     Logger.debug("#{__MODULE__} init #{inspect(args)}")
 
     {:ok, rpm_gpio} = configure_rpm_interrupts(@gpio_rpm)
-    {:ok, pwm_gpio} = configure_pwm(@gpio_pwm_control, @gpio_pwm_signal)
+    Pigpiox.Pwm.hardware_pwm(@gpio_pwm_signal, @pwm_frequency_hz, 0)
 
-    state = %Fanspeed{rpm_gpio: rpm_gpio, pwm_gpio: pwm_gpio}
-
-    set_speed(state, 0.0)
-
-    {:ok, state}
+    {:ok, %Fanspeed{rpm_gpio: rpm_gpio}}
   end
 
   @impl true
   def handle_call(:speed, _from, state) do
-    {:reply, calculate_rpm(state.rpms), state}
+    {:reply, current_rpm(state), state}
   end
 
   def handle_call({:speed, percent}, _from, state) do
-    set_speed(state, percent)
+    apply_speed(percent)
     {:reply, :ok, state}
   end
 
   @impl true
+  def handle_info({:circuits_gpio, _, nanoseconds, _value}, %{last_timestamp: nil} = state) do
+    {:noreply, %{state | last_timestamp: nanoseconds}}
+  end
+
   def handle_info({:circuits_gpio, _, nanoseconds, _value}, state) do
-    # the fan is rated for 10k rpm at most, so it can only send a pulse every
-    # 6_000_000 nanoseconds.
     dt = nanoseconds - state.last_timestamp
 
-    if dt < 2_000_000 do
-      {:noreply, %{state | last_timestamp: nanoseconds}}
-    else
-      frequency = 1 / dt
-      rpm = frequency / 2 * 60 * 1_000_000_000
+    cond do
+      dt < @debounce_ns ->
+        {:noreply, state}
 
-      rpms = Enum.take([rpm | state.rpms], 10)
-      {:noreply, %{state | last_timestamp: nanoseconds, rpms: rpms}}
+      dt > @stale_ns ->
+        # Fan was stopped; start measurement fresh from this pulse.
+        {:noreply, %{state | last_timestamp: nanoseconds, rpms: []}}
+
+      true ->
+        # 2 pulses per revolution, dt in nanoseconds → 60 * 1e9 / 2 / dt
+        rpm = 30_000_000_000 / dt
+        rpms = Enum.take([rpm | state.rpms], @rpm_samples)
+        {:noreply, %{state | last_timestamp: nanoseconds, rpms: rpms}}
     end
   end
+
+  def handle_info(_msg, state), do: {:noreply, state}
 
   ############################################################
   #                           Helpers                        #
   ############################################################
 
-  @spec calculate_rpm([float()]) :: float()
-  defp calculate_rpm(rpms) do
-    case rpms do
-      [] ->
-        0.0
+  @spec current_rpm(%Fanspeed{}) :: float()
+  defp current_rpm(%{last_timestamp: nil}), do: 0.0
 
-      rpms ->
-        Enum.sum(rpms) / Enum.count(rpms)
+  defp current_rpm(%{last_timestamp: last, rpms: rpms}) do
+    if System.monotonic_time(:nanosecond) - last > @stale_ns do
+      0.0
+    else
+      calculate_rpm(rpms)
     end
   end
 
-  @spec set_speed(term(), float()) :: :ok
-  defp set_speed(state, percent) do
-    GPIO.write(state.pwm_gpio, 1)
+  @spec calculate_rpm([float()]) :: float()
+  def calculate_rpm([]), do: 0.0
 
-    # set the pwm value
-    Pigpiox.Pwm.gpio_pwm(@gpio_pwm_signal, trunc(255 * percent))
+  def calculate_rpm(rpms) do
+    sorted = Enum.sort(rpms)
+    n = length(sorted)
+    mid = div(n, 2)
+
+    if rem(n, 2) == 1 do
+      Enum.at(sorted, mid)
+    else
+      (Enum.at(sorted, mid - 1) + Enum.at(sorted, mid)) / 2
+    end
+  end
+
+  @spec apply_speed(float()) :: :ok
+  def apply_speed(percent) do
+    duty = percent |> max(0.0) |> min(1.0)
+    Pigpiox.Pwm.hardware_pwm(@gpio_pwm_signal, @pwm_frequency_hz, trunc(1_000_000 * duty))
     :ok
   end
 
   @spec configure_rpm_interrupts(String.t()) :: {:ok, term()}
-  defp configure_rpm_interrupts(gpio_pin) do
-    # watch the gpio pin for fan speed events
+  def configure_rpm_interrupts(gpio_pin) do
     {:ok, gpio} = GPIO.open(gpio_pin, :input)
     :ok = GPIO.set_pull_mode(gpio, :pullup)
     :ok = GPIO.set_interrupts(gpio, :falling)
     {:ok, gpio}
-  end
-
-  @spec configure_pwm(String.t(), integer()) :: {:ok, term()}
-  defp configure_pwm(gpio_pwm_control, gpio_pwm_signal) do
-    # set the control pin to 1 for controlling the speed
-    {:ok, gpio_pwm_control} = GPIO.open(gpio_pwm_control, :output)
-    GPIO.write(gpio_pwm_control, 1)
-
-    # set the pwm value
-    Pigpiox.Pwm.gpio_pwm(gpio_pwm_signal, trunc(255 * 0.1))
-    {:ok, gpio_pwm_control}
   end
 end

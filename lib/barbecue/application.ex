@@ -7,6 +7,8 @@ defmodule Barbecue.Application do
 
   @impl true
   def start(_type, _args) do
+    Barbecue.Release.migrate()
+
     children =
       [
         {Phoenix.PubSub, name: Barbecue.PubSub},
