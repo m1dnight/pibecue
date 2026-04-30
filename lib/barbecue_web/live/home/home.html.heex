@@ -1,5 +1,5 @@
 <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-
+  
 <!-- Hero: current temperature -->
   <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sm:p-8">
     <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
@@ -12,10 +12,7 @@
             {Float.round(@system_state.temperature, 1)}
           </span>
           <span class="text-2xl text-slate-400 font-medium">°C</span>
-          <.icon
-            name={Trend.icon(@trend)}
-            class={"h-7 w-7 ml-1 " <> Trend.color(@trend)}
-          />
+          <.icon name={Trend.icon(@trend)} class={"h-7 w-7 ml-1 " <> Trend.color(@trend)} />
         </div>
       </div>
 
@@ -25,7 +22,8 @@
         class="text-right rounded-xl px-4 py-2 hover:bg-slate-50 active:bg-slate-100 transition-colors group"
       >
         <div class="text-xs uppercase tracking-wider text-slate-500 flex items-center justify-end gap-1">
-          Target <.icon name="hero-pencil-square" class="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+          Target
+          <.icon name="hero-pencil-square" class="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
         <div class="text-3xl font-semibold text-slate-700 tabular-nums">
           {Float.round(@system_state.target_temperature, 1)}<span class="text-slate-400">°C</span>
@@ -36,16 +34,10 @@
       </button>
     </div>
   </div>
-
+  
 <!-- Dial modal -->
-  <div
-    :if={@dial_open?}
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-  >
-    <div
-      class="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl"
-      phx-click-away="close-dial"
-    >
+  <div :if={@dial_open?} class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div class="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl" phx-click-away="close-dial">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-lg font-semibold text-slate-800">Target Temperature</h3>
         <button
@@ -69,7 +61,7 @@
         style="width: 300px; height: 300px;"
       >
         <svg viewBox="0 0 300 300" class="w-full h-full">
-<!-- background track -->
+          <!-- background track -->
           <path
             d="M 65.15 235 A 120 120 0 1 1 234.85 235"
             stroke="#e2e8f0"
@@ -77,16 +69,9 @@
             fill="none"
             stroke-linecap="round"
           />
-<!-- active fill (drawn by hook) -->
-          <path
-            data-dial-fill
-            d=""
-            stroke="#10b981"
-            stroke-width="20"
-            fill="none"
-            stroke-linecap="round"
-          />
-<!-- thumb (positioned by hook) -->
+          <!-- active fill (drawn by hook) -->
+          <path data-dial-fill d="" stroke="#10b981" stroke-width="20" fill="none" stroke-linecap="round" />
+          <!-- thumb (positioned by hook) -->
           <circle
             data-dial-thumb
             cx="65.15"
@@ -115,10 +100,10 @@
       </button>
     </div>
   </div>
-
+  
 <!-- Controls grid -->
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-
+    
 <!-- Set target -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
       <div class="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wider">
@@ -154,7 +139,7 @@
         </button>
       </div>
     </div>
-
+    
 <!-- Fan RPM -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
       <div class="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wider">
@@ -167,7 +152,7 @@
         <span class="text-sm text-slate-400 font-medium">RPM</span>
       </div>
     </div>
-
+    
 <!-- PID toggle -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
       <div class="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wider">
@@ -192,15 +177,26 @@
         </label>
       </.simple_form>
     </div>
-
+    
 <!-- Session info -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
-      <div class="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wider">
-        <.icon name="hero-clock" class="h-4 w-4" /> Session
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wider">
+          <.icon name="hero-clock" class="h-4 w-4" /> Session
+        </div>
+        <button
+          :if={@session_start.ok?}
+          type="button"
+          phx-click="stop-session"
+          data-confirm="Stop the current session and start a new one?"
+          class="text-xs font-semibold text-rose-500 hover:text-rose-700"
+        >
+          Stop
+        </button>
       </div>
       <div :if={@session_start.ok?} class="mt-2 space-y-1">
         <div class="text-sm text-slate-600">
-          Started {Timex.format!(@session_start.result, "{h24}:{m}")}
+          Started {format_started_at(@session_start.result, @timezone)}
         </div>
         <div class="text-lg font-semibold text-slate-800">
           {Timex.format_duration(
@@ -212,7 +208,7 @@
       <div :if={!@session_start.ok?} class="mt-2 text-sm text-slate-400">Loading…</div>
     </div>
   </div>
-
+  
 <!-- Charts -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
     <div :if={@session_data.ok?} class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
@@ -234,7 +230,8 @@
           @session_data.result,
           ["temperature", "target_temperature"],
           "°C",
-          ["10b981", "be123c"]
+          ["10b981", "be123c"],
+          @timezone
         )}
       </div>
     </div>
@@ -247,7 +244,7 @@
         <div class="text-xs text-slate-500">last 30 min</div>
       </div>
       <div class="w-full">
-        {Chart.build(@session_data.result, ["fan_speed"], "RPM", ["f59e0b"])}
+        {Chart.build(@session_data.result, ["fan_speed"], "RPM", ["f59e0b"], @timezone)}
       </div>
     </div>
   </div>

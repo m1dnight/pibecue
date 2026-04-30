@@ -114,10 +114,11 @@ Hooks.TempDial = {
 }
 
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+let timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
 let liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   hooks: Hooks,
-  params: {_csrf_token: csrfToken}
+  params: {_csrf_token: csrfToken, timezone: timezone}
 })
 
 // Show progress bar on live navigation and form submits

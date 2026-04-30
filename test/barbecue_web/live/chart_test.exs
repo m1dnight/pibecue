@@ -10,6 +10,22 @@ defmodule BarbecueWeb.Live.ChartTest do
       assert Chart.build([], ["temperature"], "°C", ["10b981"]) == Phoenix.HTML.raw("")
     end
 
+    # Contex needs at least two points to draw a line; with one point we
+    # render nothing rather than crashing inside the plot library.
+    test "returns a safe empty value when only a single data point exists" do
+      one_point = [
+        %{
+          time: ~U[2026-04-30 10:00:00Z],
+          temperature: 100.0,
+          fan_speed: 2000.0,
+          target_temperature: 110.0
+        }
+      ]
+
+      assert Chart.build(one_point, ["temperature"], "°C", ["10b981"]) ==
+               Phoenix.HTML.raw("")
+    end
+
     # Non-empty data must produce a Phoenix.HTML safe iolist containing an
     # SVG root element so the template can interpolate it directly.
     test "produces a safe SVG for non-empty session_data" do

@@ -30,8 +30,8 @@
       <tbody class="divide-y divide-slate-100">
         <tr :for={s <- @sessions} class="hover:bg-slate-50">
           <td class="px-4 py-3 text-sm font-medium text-slate-700 tabular-nums">{s.id}</td>
-          <td class="px-4 py-3 text-sm text-slate-600 tabular-nums">{format_time(s.started_at)}</td>
-          <td class="px-4 py-3 text-sm text-slate-600 tabular-nums">{format_time(s.ended_at)}</td>
+          <td class="px-4 py-3 text-sm text-slate-600 tabular-nums">{format_time(s.started_at, @timezone)}</td>
+          <td class="px-4 py-3 text-sm text-slate-600 tabular-nums">{format_time(s.ended_at, @timezone)}</td>
           <td class="px-4 py-3 text-sm text-slate-600 tabular-nums">{format_duration(s.duration_seconds)}</td>
           <td class="px-4 py-3 text-sm text-slate-600 text-right tabular-nums">{s.measurement_count}</td>
         </tr>

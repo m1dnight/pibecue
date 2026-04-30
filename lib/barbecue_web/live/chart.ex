@@ -25,18 +25,31 @@ defmodule BarbecueWeb.Live.Chart do
   Builds an inline responsive SVG line plot from `session_data`.
 
   `keys` are the series to plot (each must be present as a string-keyed
-  field on every data point). `label` is the y-axis label, and `palette`
-  is a list of hex color strings (no `#`) — one per key.
+  field on every data point). `label` is the y-axis label, `palette` is a
+  list of hex color strings (no `#`) — one per key — and `timezone` is the
+  IANA timezone the x-axis tick labels should be rendered in (defaults to
+  `"Etc/UTC"`).
 
-  Returns an empty safe value when `session_data` is empty.
+  Returns an empty safe value when `session_data` has fewer than two
+  points (Contex needs at least two to draw a line).
   """
-  @spec build([map()], [String.t()], String.t(), [String.t()]) :: Phoenix.HTML.safe()
-  def build([], _keys, _label, _palette), do: Phoenix.HTML.raw("")
+  @spec build([map()], [String.t()], String.t(), [String.t()], String.t()) ::
+          Phoenix.HTML.safe()
+  def build(session_data, keys, label, palette, timezone \\ "Etc/UTC")
 
-  def build(session_data, keys, label, palette) do
+  def build([], _keys, _label, _palette, _timezone), do: Phoenix.HTML.raw("")
+  def build([_only], _keys, _label, _palette, _timezone), do: Phoenix.HTML.raw("")
+
+  def build(session_data, keys, label, palette, timezone) do
     sorted = Enum.sort_by(session_data, & &1.time, {:asc, DateTime})
 
-    Plot.new(build_dataset(sorted, keys), LinePlot, @width, @height, options(sorted, keys, palette))
+    Plot.new(
+      build_dataset(sorted, keys),
+      LinePlot,
+      @width,
+      @height,
+      options(sorted, keys, palette, timezone)
+    )
     |> Plot.axis_labels("", label)
     |> Plot.to_svg()
     |> post_process()
@@ -65,13 +78,16 @@ defmodule BarbecueWeb.Live.Chart do
   end
 
   # Builds the Contex chart options with a TimeScale that spans exactly
-  # from the first to the last measurement.
-  @spec options([map()], [String.t()], [String.t()]) :: keyword()
-  defp options([%{time: first} | _] = sorted, keys, palette) do
+  # from the first to the last measurement. Tick labels are converted to
+  # `timezone` for display.
+  @spec options([map()], [String.t()], [String.t()], String.t()) :: keyword()
+  defp options([%{time: first} | _] = sorted, keys, palette, timezone) do
     %{time: last} = List.last(sorted)
 
     [
-      custom_x_formatter: fn x -> Timex.format!(x, "{h24}:{m}") end,
+      custom_x_formatter: fn x ->
+        x |> Timex.Timezone.convert(timezone) |> Timex.format!("{h24}:{m}")
+      end,
       custom_x_scale: exact_time_scale(first, last),
       colour_palette: palette,
       mapping: %{x_col: "time", y_cols: keys},

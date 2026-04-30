@@ -10,7 +10,10 @@ defmodule BarbecueWeb.Sessions do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, :sessions, Sessions.list_with_stats())}
+    {:ok,
+     socket
+     |> assign(:timezone, browser_timezone(socket))
+     |> assign(:sessions, Sessions.list_with_stats())}
   end
 
   @impl true
@@ -24,19 +27,25 @@ defmodule BarbecueWeb.Sessions do
   ############################################################
 
   @doc """
-  Formats a `DateTime` for the sessions table, or returns "—" for nil.
+  Formats a `DateTime` for the sessions table in the supplied IANA timezone,
+  or returns "—" for nil.
 
   ## Examples
 
-      iex> BarbecueWeb.Sessions.format_time(~U[2026-04-30 18:31:00Z])
+      iex> BarbecueWeb.Sessions.format_time(~U[2026-04-30 18:31:00Z], "Etc/UTC")
       "2026-04-30 18:31"
 
-      iex> BarbecueWeb.Sessions.format_time(nil)
+      iex> BarbecueWeb.Sessions.format_time(nil, "Etc/UTC")
       "—"
   """
-  @spec format_time(DateTime.t() | nil) :: String.t()
-  def format_time(nil), do: "—"
-  def format_time(dt), do: Timex.format!(dt, "{YYYY}-{0M}-{0D} {h24}:{m}")
+  @spec format_time(DateTime.t() | nil, String.t()) :: String.t()
+  def format_time(nil, _timezone), do: "—"
+
+  def format_time(dt, timezone) do
+    dt
+    |> Timex.Timezone.convert(timezone)
+    |> Timex.format!("{YYYY}-{0M}-{0D} {h24}:{m}")
+  end
 
   @doc """
   Formats a duration (in seconds) as a human-readable string.
@@ -71,6 +80,19 @@ defmodule BarbecueWeb.Sessions do
     |> case do
       [] -> "0s"
       parts -> Enum.map_join(parts, " ", fn {n, u} -> "#{n}#{u}" end)
+    end
+  end
+
+  ############################################################
+  #                          Helpers                         #
+  ############################################################
+
+  # Reads the browser-supplied timezone from connect params, defaulting to UTC.
+  @spec browser_timezone(Phoenix.LiveView.Socket.t()) :: String.t()
+  defp browser_timezone(socket) do
+    case get_connect_params(socket) do
+      %{"timezone" => tz} when is_binary(tz) and tz != "" -> tz
+      _ -> "Etc/UTC"
     end
   end
 end

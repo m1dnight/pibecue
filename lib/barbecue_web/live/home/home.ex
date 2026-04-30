@@ -10,7 +10,7 @@ defmodule BarbecueWeb.Home do
   use BarbecueWeb, :live_view
 
   alias Barbecue.Controller
-  alias Barbecue.Storage.{State, States}
+  alias Barbecue.Storage.{Sessions, State, States}
   alias BarbecueWeb.Live.{Chart, Temperature, Trend}
   alias Phoenix.PubSub
 
@@ -32,7 +32,11 @@ defmodule BarbecueWeb.Home do
   def mount(_params, _session, socket) do
     PubSub.subscribe(Barbecue.PubSub, "system_state")
     PubSub.subscribe(Barbecue.PubSub, "pid")
-    {:ok, initial_assigns(socket)}
+
+    {:ok,
+     socket
+     |> assign(:timezone, browser_timezone(socket))
+     |> initial_assigns()}
   end
 
   @impl true
@@ -82,9 +86,47 @@ defmodule BarbecueWeb.Home do
     {:noreply, assign(socket, :pid_on?, on?)}
   end
 
+  def handle_event("stop-session", _params, socket) do
+    {:ok, _new_session} = Sessions.start_new()
+    now = DateTime.utc_now()
+
+    {:noreply,
+     socket
+     |> assign(:session_start, %{socket.assigns.session_start | result: now})
+     |> assign(:session_data, %{socket.assigns.session_data | result: []})}
+  end
+
+  ############################################################
+  #                    Template helpers                      #
+  ############################################################
+
+  @doc """
+  Formats a UTC `DateTime` as `HH:MM` in the supplied IANA timezone.
+
+  ## Examples
+
+      iex> BarbecueWeb.Home.format_started_at(~U[2026-04-30 18:31:00Z], "Etc/UTC")
+      "18:31"
+  """
+  @spec format_started_at(DateTime.t(), String.t()) :: String.t()
+  def format_started_at(dt, timezone) do
+    dt
+    |> Timex.Timezone.convert(timezone)
+    |> Timex.format!("{h24}:{m}")
+  end
+
   ############################################################
   #                          Helpers                         #
   ############################################################
+
+  # Reads the browser-supplied timezone from connect params, defaulting to UTC.
+  @spec browser_timezone(Phoenix.LiveView.Socket.t()) :: String.t()
+  defp browser_timezone(socket) do
+    case get_connect_params(socket) do
+      %{"timezone" => tz} when is_binary(tz) and tz != "" -> tz
+      _ -> "Etc/UTC"
+    end
+  end
 
   # Sets initial assigns for a fresh mount.
   @spec initial_assigns(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
@@ -100,15 +142,12 @@ defmodule BarbecueWeb.Home do
   end
 
   # Loads the most recent measurements for the async session_data assigns.
+  # `session_start` is the actual start of the current cooking session (the
+  # earliest measurement linked to it), not the oldest visible bucket.
   @spec load_session() :: {:ok, %{session_data: [States.bucket()], session_start: DateTime.t()}}
   defp load_session do
     session_data = States.recent(@window_seconds, @bucket_seconds)
-
-    session_start =
-      case session_data do
-        [] -> DateTime.utc_now()
-        [first | _] -> first.time
-      end
+    session_start = Sessions.current_started_at() || DateTime.utc_now()
 
     {:ok, %{session_data: session_data, session_start: session_start}}
   end

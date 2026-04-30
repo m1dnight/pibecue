@@ -90,6 +90,29 @@ defmodule Barbecue.Storage.SessionsTest do
     end
   end
 
+  describe "current_started_at/0" do
+    # No measurements means there's no defined start time yet — used by the
+    # home page to fall back to "now".
+    test "returns nil when the current session has no measurements" do
+      {:ok, _session} = Sessions.start_new()
+      assert Sessions.current_started_at() == nil
+    end
+
+    # Once measurements are linked to the current session, the result must
+    # be the earliest one's inserted_at — independent of any time window
+    # the chart happens to be showing.
+    test "returns the earliest measurement's inserted_at for the current session" do
+      {:ok, session} = Sessions.start_new()
+      earliest = ~U[2026-04-30 09:09:00Z]
+      latest = DateTime.add(earliest, 3600, :second)
+
+      insert_state!(session.id, latest)
+      insert_state!(session.id, earliest)
+
+      assert DateTime.compare(Sessions.current_started_at(), earliest) == :eq
+    end
+  end
+
   describe "list_with_stats/0" do
     # Sessions without measurements should appear with nil time fields and
     # zero count, so the UI can render an "empty" state for them.

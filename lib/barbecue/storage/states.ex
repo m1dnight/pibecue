@@ -42,28 +42,36 @@ defmodule Barbecue.Storage.States do
   end
 
   @doc """
-  Returns measurements from the last `window_seconds`, bucketed into
-  `bucket_seconds`-wide buckets and averaged within each bucket.
+  Returns measurements belonging to the current session that fall in the
+  last `window_seconds`, bucketed into `bucket_seconds`-wide buckets and
+  averaged within each bucket.
+
+  Returns an empty list when there is no current session or it has no
+  matching measurements.
   """
   @spec recent(pos_integer(), pos_integer()) :: [bucket()]
   def recent(window_seconds \\ 1800, bucket_seconds \\ 10) do
-    cutoff = DateTime.utc_now() |> DateTime.add(-window_seconds, :second)
+    case Sessions.current() do
+      nil ->
+        []
 
-    query =
-      from(s in State,
-        where: s.inserted_at >= ^cutoff,
-        select: %{
-          inserted_at: s.inserted_at,
-          fan_speed: s.fan_speed,
-          temperature: s.temperature,
-          target_temperature: s.target_temperature
-        }
-      )
+      session ->
+        cutoff = DateTime.utc_now() |> DateTime.add(-window_seconds, :second)
 
-    Repo.all(query)
-    |> Enum.group_by(&bucket_time(&1.inserted_at, bucket_seconds))
-    |> Enum.map(&aggregate_bucket/1)
-    |> Enum.sort_by(& &1.time, {:asc, DateTime})
+        from(s in State,
+          where: s.session_id == ^session.id and s.inserted_at >= ^cutoff,
+          select: %{
+            inserted_at: s.inserted_at,
+            fan_speed: s.fan_speed,
+            temperature: s.temperature,
+            target_temperature: s.target_temperature
+          }
+        )
+        |> Repo.all()
+        |> Enum.group_by(&bucket_time(&1.inserted_at, bucket_seconds))
+        |> Enum.map(&aggregate_bucket/1)
+        |> Enum.sort_by(& &1.time, {:asc, DateTime})
+    end
   end
 
   @doc """

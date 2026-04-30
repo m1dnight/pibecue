@@ -78,6 +78,26 @@ defmodule Barbecue.Storage.Sessions do
   end
 
   @doc """
+  Returns the `inserted_at` of the current session's earliest measurement,
+  or `nil` when no session exists yet or it has no measurements.
+  """
+  @spec current_started_at() :: DateTime.t() | nil
+  def current_started_at do
+    case current() do
+      nil ->
+        nil
+
+      session ->
+        Repo.one(
+          from(st in State,
+            where: st.session_id == ^session.id,
+            select: type(min(st.inserted_at), :utc_datetime)
+          )
+        )
+    end
+  end
+
+  @doc """
   Lists all sessions with derived `started_at`, `ended_at`, `duration_seconds`,
   and `measurement_count`. Newest first.
 
