@@ -100,7 +100,7 @@ defmodule BarbecueWeb.Home do
   end
 
   # Loads the most recent measurements for the async session_data assigns.
-  @spec load_session() :: {:ok, %{session_data: [map()], session_start: DateTime.t()}}
+  @spec load_session() :: {:ok, %{session_data: [States.bucket()], session_start: DateTime.t()}}
   defp load_session do
     session_data = States.recent(@window_seconds, @bucket_seconds)
 
@@ -143,7 +143,7 @@ defmodule BarbecueWeb.Home do
   end
 
   # Inserts or replaces the bucket for `time` with values from `system_state`.
-  @spec upsert_bucket([map()], DateTime.t(), State.t()) :: [map()]
+  @spec upsert_bucket([States.bucket()], DateTime.t(), State.t()) :: [States.bucket()]
   defp upsert_bucket(buckets, time, system_state) do
     case Enum.find_index(buckets, &(&1.time == time)) do
       nil -> buckets ++ [bucket_from_state(time, system_state)]
@@ -152,7 +152,7 @@ defmodule BarbecueWeb.Home do
   end
 
   # Builds a bucket map from a system state and a bucket time.
-  @spec bucket_from_state(DateTime.t(), State.t()) :: map()
+  @spec bucket_from_state(DateTime.t(), State.t()) :: States.bucket()
   defp bucket_from_state(time, system_state) do
     %{
       time: time,
