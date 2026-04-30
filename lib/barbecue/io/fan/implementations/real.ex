@@ -1,4 +1,8 @@
 defmodule Barbecue.IO.Fanspeed.Real do
+  # Pigpiox is only compiled for the :rpi4 target (see mix.exs). Tell the
+  # compiler not to warn about it when building for the host.
+  @compile {:no_warn_undefined, Pigpiox.Pwm}
+
   use GenServer
   require Logger
   alias Barbecue.IO.Fanspeed.Real, as: Fanspeed
