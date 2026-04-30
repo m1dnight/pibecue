@@ -10,7 +10,7 @@ defmodule Barbecue.IO.Thermocouple do
 
   # gets the module to use to read temperature
   @spec implementation :: atom()
-  defp implementation() do
+  defp implementation do
     Application.get_env(:barbecue, :thermocouple)
   end
 end

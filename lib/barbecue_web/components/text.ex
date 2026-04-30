@@ -1,4 +1,8 @@
 defmodule BarbecueWeb.Components.Text do
+  @moduledoc """
+  Reusable text-related Phoenix components (page title, body wrapper, link).
+  """
+
   use Phoenix.Component
 
   def page_title(assigns) do

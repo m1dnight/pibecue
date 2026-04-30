@@ -63,7 +63,7 @@ defmodule Barbecue.IO.MAX31856 do
   Initialize the thermocouple.
   """
   @spec init() :: {:ok, term()}
-  def init() do
+  def init do
     # open the spi port
     {:ok, ref} = SPI.open(@device, mode: 1, speed_hz: 500_000, lsb_first: false)
 

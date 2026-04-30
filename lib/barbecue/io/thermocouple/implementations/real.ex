@@ -4,8 +4,9 @@ defmodule Barbecue.IO.Thermocouple.Real do
   """
   use GenServer
 
-  alias Barbecue.IO.Thermocouple.Real, as: Thermocouple
   alias Barbecue.IO.MAX31856
+  alias Barbecue.IO.Thermocouple.Real, as: Thermocouple
+
   defstruct ref: nil
 
   def start_link(args \\ []) do
@@ -17,7 +18,7 @@ defmodule Barbecue.IO.Thermocouple.Real do
   ############################################################
 
   @spec measure() :: float()
-  def measure() do
+  def measure do
     GenServer.call(__MODULE__, :measure)
   end
 

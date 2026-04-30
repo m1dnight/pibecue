@@ -6,7 +6,10 @@ defmodule Barbecue.Monitor do
   use GenServer
   require Logger
 
+  alias Barbecue.Controller
+  alias Barbecue.IO.{Fanspeed, Thermocouple}
   alias Barbecue.Monitor
+  alias Barbecue.Storage.States
   alias Phoenix.PubSub
 
   defstruct rate: 1_000, enabled: true, timer: nil
@@ -80,9 +83,9 @@ defmodule Barbecue.Monitor do
 
   @spec take_measurements :: :ok
   defp take_measurements do
-    fan_speed = Barbecue.IO.Fanspeed.speed()
-    {:ok, temperature} = Barbecue.IO.Thermocouple.measure()
-    target_temperature = Barbecue.Controller.target_temperature()
+    fan_speed = Fanspeed.speed()
+    {:ok, temperature} = Thermocouple.measure()
+    target_temperature = Controller.target_temperature()
 
     system_state = %{
       fan_speed: fan_speed,
@@ -91,7 +94,7 @@ defmodule Barbecue.Monitor do
     }
 
     # store the measurements
-    case Barbecue.Storage.States.create_state(system_state) do
+    case States.create_state(system_state) do
       {:ok, system_state} ->
         Logger.debug("system: #{inspect(system_state)}")
         PubSub.broadcast(Barbecue.PubSub, "system_state", {:system_state, system_state})

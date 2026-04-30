@@ -17,7 +17,7 @@ defmodule Barbecue.IO.Thermocouple.Mock do
   ############################################################
 
   @spec measure() :: float()
-  def measure() do
+  def measure do
     GenServer.call(__MODULE__, :measure)
   end
 

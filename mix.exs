@@ -30,7 +30,14 @@ defmodule Barbecue.MixProject do
       aliases: aliases(),
       deps: deps(),
       releases: [{@app, release()}],
-      preferred_cli_target: [run: :host, test: :host]
+      preferred_cli_target: [run: :host, test: :host],
+      dialyzer: dialyzer()
+    ]
+  end
+
+  defp dialyzer do
+    [
+      plt_add_apps: [:ex_unit, :mix]
     ]
   end
 
@@ -118,7 +125,8 @@ defmodule Barbecue.MixProject do
       {:table_rex, "~> 2.0.0 or ~> 3.0 or ~> 4.0"},
 
       # mail
-      {:phoenix_swoosh, "~> 1.2.1"}
+      {:phoenix_swoosh, "~> 1.2.1"},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -133,7 +141,8 @@ defmodule Barbecue.MixProject do
       setup: ["deps.get", "assets.setup", "assets.build"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["tailwind default", "esbuild default"],
-      "assets.deploy": ["tailwind default --minify", "esbuild default --minify", "phx.digest"]
+      "assets.deploy": ["tailwind default --minify", "esbuild default --minify", "phx.digest"],
+      precommit: ["compile --warning-as-errors", "deps.unlock --unused", "format", "dialyzer", "credo --strict"]
     ]
   end
 

@@ -21,7 +21,7 @@ defmodule Barbecue.Storage.States do
   List all system states.
   """
   @spec states :: [State.t()]
-  def states() do
+  def states do
     Repo.all(State)
   end
 

@@ -1,4 +1,9 @@
 defmodule Barbecue.IO.Fanspeed.Mock do
+  @moduledoc """
+  In-memory mock fan controller for host (non-Pi) development and tests.
+  Reports a noisy RPM derived from the most recently set speed percentage.
+  """
+
   use GenServer
   require Logger
   alias Barbecue.IO.Fanspeed.Mock, as: Fanspeed
@@ -19,7 +24,7 @@ defmodule Barbecue.IO.Fanspeed.Mock do
   @doc """
   Returns the fan speed in RPM.
   """
-  def speed() do
+  def speed do
     GenServer.call(__MODULE__, :speed)
   end
 

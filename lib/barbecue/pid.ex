@@ -1,4 +1,8 @@
 defmodule Barbecue.PID do
+  @moduledoc """
+  PID controller state and update logic for the fan/temperature loop.
+  """
+
   alias Barbecue.PID
 
   use TypedStruct

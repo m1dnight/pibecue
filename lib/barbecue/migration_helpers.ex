@@ -1,7 +1,12 @@
 defmodule Barbecue.MigrationHelpers do
+  @moduledoc """
+  Helpers for running Ecto migrations from a release. Used by `mix release`
+  artifacts that don't have Mix tasks available.
+  """
+
   @app :barbecue
 
-  def migrate() do
+  def migrate do
     for repo <- repos() do
       {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :up, all: true))
     end
@@ -11,7 +16,7 @@ defmodule Barbecue.MigrationHelpers do
     {:ok, _, _} = Ecto.Migrator.with_repo(repo, &Ecto.Migrator.run(&1, :down, to: version))
   end
 
-  defp repos() do
+  defp repos do
     _ = Application.load(@app)
     Application.fetch_env!(@app, :ecto_repos)
   end

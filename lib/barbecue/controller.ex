@@ -4,9 +4,9 @@ defmodule Barbecue.Controller do
   """
   use GenServer
 
-  alias Barbecue.PID
   alias Barbecue.Controller
   alias Barbecue.IO.Fanspeed
+  alias Barbecue.PID
   alias Phoenix.PubSub
 
   require Logger
@@ -25,7 +25,7 @@ defmodule Barbecue.Controller do
   Returns the current target temperature.
   """
   @spec target_temperature :: float()
-  def target_temperature() do
+  def target_temperature do
     GenServer.call(__MODULE__, :target_temperature)
   end
 
@@ -38,17 +38,17 @@ defmodule Barbecue.Controller do
   end
 
   @spec start :: :ok
-  def start() do
+  def start do
     GenServer.call(__MODULE__, :start)
   end
 
   @spec stop :: :ok
-  def stop() do
+  def stop do
     GenServer.call(__MODULE__, :stop)
   end
 
   @spec on? :: boolean()
-  def on?() do
+  def on? do
     GenServer.call(__MODULE__, :state?)
   end
 
@@ -92,7 +92,7 @@ defmodule Barbecue.Controller do
   end
 
   @impl true
-  def handle_info({:system_state, _}, state = %{enabled: false}) do
+  def handle_info({:system_state, _}, %{enabled: false} = state) do
     {:noreply, state}
   end
 

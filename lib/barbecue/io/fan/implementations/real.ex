@@ -1,7 +1,13 @@
 defmodule Barbecue.IO.Fanspeed.Real do
+  @moduledoc """
+  Real (hardware) fan controller for the Pi: drives PWM on `GPIO12` and
+  counts tach pulses on `GPIO24` to report fan speed in RPM.
+  """
+
   # Pigpiox is only compiled for the :rpi4 target (see mix.exs). Tell the
-  # compiler not to warn about it when building for the host.
+  # compiler and dialyzer not to warn about it when building for the host.
   @compile {:no_warn_undefined, Pigpiox.Pwm}
+  @dialyzer {:nowarn_function, init: 1, apply_speed: 1}
 
   use GenServer
   require Logger
@@ -24,6 +30,12 @@ defmodule Barbecue.IO.Fanspeed.Real do
 
   defstruct rpm_gpio: nil, rpms: [], last_timestamp: nil
 
+  @type t :: %__MODULE__{
+          rpm_gpio: term(),
+          rpms: [float()],
+          last_timestamp: integer() | nil
+        }
+
   def start_link(args \\ []) do
     Logger.debug("#{__MODULE__} start_link #{inspect(args)}")
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
@@ -36,7 +48,7 @@ defmodule Barbecue.IO.Fanspeed.Real do
   @doc """
   Returns the fan speed in RPM.
   """
-  def speed() do
+  def speed do
     GenServer.call(__MODULE__, :speed)
   end
 
@@ -101,7 +113,7 @@ defmodule Barbecue.IO.Fanspeed.Real do
   #                           Helpers                        #
   ############################################################
 
-  @spec current_rpm(%Fanspeed{}) :: float()
+  @spec current_rpm(Fanspeed.t()) :: float()
   defp current_rpm(%{last_timestamp: nil}), do: 0.0
 
   defp current_rpm(%{last_timestamp: last, rpms: rpms}) do
