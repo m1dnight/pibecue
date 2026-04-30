@@ -10,6 +10,10 @@ defmodule BarbecueWeb.Live.Chart do
   @width 1000
   @height 300
 
+  # Extra right padding (in viewBox units) so the last x-axis tick label
+  # doesn't get clipped at the SVG edge.
+  @right_padding 30
+
   @doc """
   Builds an inline responsive SVG line plot from `session_data`.
 
@@ -77,13 +81,14 @@ defmodule BarbecueWeb.Live.Chart do
     |> Phoenix.HTML.raw()
   end
 
-  # Rewrites a single <svg ...> opening tag to use viewBox + 100% dimensions.
+  # Rewrites a single <svg ...> opening tag to use viewBox + 100% dimensions
+  # and extends the viewBox horizontally so edge tick labels aren't clipped.
   @spec make_svg_responsive(String.t()) :: String.t()
   defp make_svg_responsive(tag) do
     if String.contains?(tag, "viewBox") do
-      tag
+      pad_viewbox_right(tag, @right_padding)
     else
-      w = extract_attr(tag, "width") || "#{@width}"
+      w = String.to_integer(extract_attr(tag, "width") || "#{@width}")
       h = extract_attr(tag, "height") || "#{@height}"
 
       tag
@@ -91,9 +96,22 @@ defmodule BarbecueWeb.Live.Chart do
       |> String.replace(~r/height="\d+"/, ~s|height="100%"|)
       |> String.replace(
         ~r/<svg/,
-        ~s|<svg viewBox="0 0 #{w} #{h}" preserveAspectRatio="xMidYMid meet" style="display:block"|
+        ~s|<svg viewBox="0 0 #{w + @right_padding} #{h}" preserveAspectRatio="xMidYMid meet" style="display:block"|
       )
     end
+  end
+
+  # Extends an existing viewBox attribute by `padding` units on the right.
+  @spec pad_viewbox_right(String.t(), non_neg_integer()) :: String.t()
+  defp pad_viewbox_right(tag, padding) do
+    Regex.replace(
+      ~r/viewBox="(\d+) (\d+) (\d+) (\d+)"/,
+      tag,
+      fn _, x, y, w, h ->
+        new_w = String.to_integer(w) + padding
+        ~s|viewBox="#{x} #{y} #{new_w} #{h}"|
+      end
+    )
   end
 
   # Extracts a numeric attribute value from an SVG opening tag.
