@@ -5,19 +5,18 @@ defmodule BarbecueWeb.Live.Chart do
 
   alias Contex.{Dataset, LinePlot, Plot, TimeScale}
 
-  # Pixel-space dimensions used for the SVG viewBox; the rendered image
-  # scales to its container thanks to the responsive-svg post-processing.
+  # Pixel-space dimensions used for the SVG viewBox. The rendered image
+  # scales to its container via the responsive-svg post-processing.
   @width 1000
   @height 300
 
   # Extra right padding (in viewBox units) so the last x-axis tick label
   # doesn't get clipped at the SVG edge.
-  @right_padding 60
+  @right_padding 40
 
   # Plot-area bounds within the SVG, derived from Contex's defaults for a
-  # 1000x300 LinePlot. Used to position the "current time" indicator at
-  # the right edge of the chart (which now equals the latest measurement
-  # because we truncate the x-scale's nice_domain).
+  # 1000x300 LinePlot. The right edge equals the latest measurement because
+  # we truncate the x-scale's nice_domain.
   @plot_right 990
   @plot_top 10
   @plot_bottom 230
@@ -40,8 +39,7 @@ defmodule BarbecueWeb.Live.Chart do
     Plot.new(build_dataset(sorted, keys), LinePlot, @width, @height, options(sorted, keys, palette))
     |> Plot.axis_labels("", label)
     |> Plot.to_svg()
-    |> responsive_svg()
-    |> inject_now_marker(@plot_right)
+    |> post_process()
   end
 
   ############################################################
@@ -66,107 +64,66 @@ defmodule BarbecueWeb.Live.Chart do
     }
   end
 
-  # Builds the Contex chart options. Provides an explicit TimeScale spanning
-  # the data's time range; Contex's `nice/1` rounds this to clean tick
-  # boundaries (e.g. 5-minute intervals).
+  # Builds the Contex chart options with a TimeScale that spans exactly
+  # from the first to the last measurement.
   @spec options([map()], [String.t()], [String.t()]) :: keyword()
-  defp options(sorted, keys, palette) do
-    base = [
+  defp options([%{time: first} | _] = sorted, keys, palette) do
+    %{time: last} = List.last(sorted)
+
+    [
       custom_x_formatter: fn x -> Timex.format!(x, "{h24}:{m}") end,
+      custom_x_scale: exact_time_scale(first, last),
       colour_palette: palette,
       mapping: %{x_col: "time", y_cols: keys},
       legend_setting: :legend_none,
       smoothed: false
     ]
-
-    IO.inspect hd(sorted)
-    IO.inspect List.last(sorted)
-    case sorted do
-      [] ->
-        base
-
-      [%{time: first} | _] = data ->
-        %{time: last} = List.last(data)
-        Keyword.put(base, :custom_x_scale, truncated_time_scale(first, last))
-    end
   end
 
-  # Builds a TimeScale whose left edge is rounded down to a tick boundary
-  # (Contex's default behavior) but whose right edge is truncated back to
-  # `last` — so the chart ends exactly at the latest measurement instead of
-  # extending out to the next 5-minute mark. `display_count` is recomputed
-  # so the now-removed trailing tick isn't generated.
-  @spec truncated_time_scale(DateTime.t(), DateTime.t()) :: TimeScale.t()
-  defp truncated_time_scale(first, last) do
+  # Builds a TimeScale that spans exactly `[first, last]`. Contex's nice/1
+  # would otherwise round both edges out to the nearest tick boundary; we
+  # override `nice_domain` to keep the chart aligned with the actual data.
+  # `display_count` is recomputed so ticks past `last` aren't generated.
+  @spec exact_time_scale(DateTime.t(), DateTime.t()) :: TimeScale.t()
+  defp exact_time_scale(first, last) do
     scale = TimeScale.new() |> TimeScale.domain(first, last)
-    {nice_min, _} = scale.nice_domain
     interval_ms = elem(scale.tick_interval, 2)
-    width_ms = DateTime.diff(last, nice_min, :millisecond)
-    count = div(width_ms, interval_ms)
+    count = div(DateTime.diff(last, first, :millisecond), interval_ms)
 
-    struct(scale, nice_domain: {nice_min, last}, display_count: count)
+    struct(scale, nice_domain: {first, last}, display_count: count)
   end
 
-  # Post-processes a Contex SVG so it scales to its container.
-  @spec responsive_svg(Phoenix.HTML.safe() | binary()) :: Phoenix.HTML.safe()
-  defp responsive_svg({:safe, iodata}), do: responsive_svg(IO.iodata_to_binary(iodata))
-
-  defp responsive_svg(svg) when is_binary(svg) do
-    svg
-    |> String.replace(~r/<svg([^>]*?)>/s, &make_svg_responsive/1)
+  # Pads the SVG viewBox on the right (so trailing tick labels don't clip)
+  # and appends a dotted vertical line at the right edge to mark "now".
+  @spec post_process(Phoenix.HTML.safe()) :: Phoenix.HTML.safe()
+  defp post_process({:safe, iodata}) do
+    iodata
+    |> IO.iodata_to_binary()
+    |> pad_viewbox_right()
+    |> append_now_marker()
     |> Phoenix.HTML.raw()
   end
 
-  # Rewrites a single <svg ...> opening tag to use viewBox + 100% dimensions
-  # and extends the viewBox horizontally so edge tick labels aren't clipped.
-  @spec make_svg_responsive(String.t()) :: String.t()
-  defp make_svg_responsive(tag) do
-    if String.contains?(tag, "viewBox") do
-      pad_viewbox_right(tag, @right_padding)
-    else
-      w = String.to_integer(extract_attr(tag, "width") || "#{@width}")
-      h = extract_attr(tag, "height") || "#{@height}"
-
-      tag
-      |> String.replace(~r/width="\d+"/, ~s|width="100%"|)
-      |> String.replace(~r/height="\d+"/, ~s|height="100%"|)
-      |> String.replace(
-        ~r/<svg/,
-        ~s|<svg viewBox="0 0 #{w + @right_padding} #{h}" preserveAspectRatio="xMidYMid meet" style="display:block"|
-      )
-    end
-  end
-
-  # Extends an existing viewBox attribute by `padding` units on the right.
-  @spec pad_viewbox_right(String.t(), non_neg_integer()) :: String.t()
-  defp pad_viewbox_right(tag, padding) do
+  # Extends the existing viewBox attribute by @right_padding units on the right.
+  @spec pad_viewbox_right(String.t()) :: String.t()
+  defp pad_viewbox_right(svg) do
     Regex.replace(
       ~r/viewBox="(\d+) (\d+) (\d+) (\d+)"/,
-      tag,
+      svg,
       fn _, x, y, w, h ->
-        new_w = String.to_integer(w) + padding
+        new_w = String.to_integer(w) + @right_padding
         ~s|viewBox="#{x} #{y} #{new_w} #{h}"|
       end
     )
   end
 
-  # Extracts a numeric attribute value from an SVG opening tag.
-  @spec extract_attr(String.t(), String.t()) :: String.t() | nil
-  defp extract_attr(tag, attr) do
-    case Regex.run(~r/#{attr}="(\d+)"/, tag) do
-      [_, value] -> value
-      _ -> nil
-    end
-  end
-
-  # Injects a dotted vertical line at `x` to mark "now" — the latest
-  # measurement's position within the chart's nice-rounded x-axis.
-  @spec inject_now_marker(Phoenix.HTML.safe(), float()) :: Phoenix.HTML.safe()
-  defp inject_now_marker({:safe, svg}, x) do
+  # Appends a dotted vertical line at the right edge of the plot area to
+  # mark the latest measurement.
+  @spec append_now_marker(String.t()) :: String.t()
+  defp append_now_marker(svg) do
     line =
-      ~s|<line x1="#{x}" y1="#{@plot_top}" x2="#{x}" y2="#{@plot_bottom}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3" />|
+      ~s|<line x1="#{@plot_right}" y1="#{@plot_top}" x2="#{@plot_right}" y2="#{@plot_bottom}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3" />|
 
-    svg = svg |> IO.iodata_to_binary() |> String.replace("</svg>", "#{line}</svg>")
-    Phoenix.HTML.raw(svg)
+    String.replace(svg, "</svg>", "#{line}</svg>")
   end
 end
