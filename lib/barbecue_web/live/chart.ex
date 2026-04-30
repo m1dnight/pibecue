@@ -3,7 +3,7 @@ defmodule BarbecueWeb.Live.Chart do
   Builds inline responsive SVG line plots for the dashboard.
   """
 
-  alias Contex.{Dataset, LinePlot, Plot}
+  alias Contex.{Dataset, LinePlot, Plot, TimeScale}
 
   # Pixel-space dimensions used for the SVG viewBox; the rendered image
   # scales to its container thanks to the responsive-svg post-processing.
@@ -15,15 +15,12 @@ defmodule BarbecueWeb.Live.Chart do
   @right_padding 60
 
   # Plot-area bounds within the SVG, derived from Contex's defaults for a
-  # 1000x300 LinePlot. Used to position the "current time" indicator.
-  @plot_left 90
+  # 1000x300 LinePlot. Used to position the "current time" indicator at
+  # the right edge of the chart (which now equals the latest measurement
+  # because we truncate the x-scale's nice_domain).
   @plot_right 990
   @plot_top 10
   @plot_bottom 230
-
-  # Tick interval Contex uses for our 30-min window (5 minutes). Used for
-  # rounding when computing the now-marker x-position.
-  @tick_interval_seconds 300
 
   @doc """
   Builds an inline responsive SVG line plot from `session_data`.
@@ -39,13 +36,12 @@ defmodule BarbecueWeb.Live.Chart do
 
   def build(session_data, keys, label, palette) do
     sorted = Enum.sort_by(session_data, & &1.time, {:asc, DateTime})
-    now_x = now_marker_x(sorted)
 
-    Plot.new(build_dataset(sorted, keys), LinePlot, @width, @height, options(keys, palette))
+    Plot.new(build_dataset(sorted, keys), LinePlot, @width, @height, options(sorted, keys, palette))
     |> Plot.axis_labels("", label)
     |> Plot.to_svg()
     |> responsive_svg()
-    |> inject_now_marker(now_x)
+    |> inject_now_marker(@plot_right)
   end
 
   ############################################################
@@ -70,51 +66,45 @@ defmodule BarbecueWeb.Live.Chart do
     }
   end
 
-  # Builds the Contex chart options. Lets Contex handle nice tick rounding;
-  # we compensate for the resulting overshoot in `drop_overshoot_tick/2`.
-  @spec options([String.t()], [String.t()]) :: keyword()
-  defp options(keys, palette) do
-    [
+  # Builds the Contex chart options. Provides an explicit TimeScale spanning
+  # the data's time range; Contex's `nice/1` rounds this to clean tick
+  # boundaries (e.g. 5-minute intervals).
+  @spec options([map()], [String.t()], [String.t()]) :: keyword()
+  defp options(sorted, keys, palette) do
+    base = [
       custom_x_formatter: fn x -> Timex.format!(x, "{h24}:{m}") end,
       colour_palette: palette,
       mapping: %{x_col: "time", y_cols: keys},
       legend_setting: :legend_none,
       smoothed: false
     ]
-  end
 
-  # Computes the x-coordinate for the now-marker based on where the latest
-  # measurement falls inside Contex's nice-rounded x-axis range.
-  @spec now_marker_x([map()]) :: float()
-  defp now_marker_x([]), do: @plot_right
+    IO.inspect hd(sorted)
+    IO.inspect List.last(sorted)
+    case sorted do
+      [] ->
+        base
 
-  defp now_marker_x(sorted) do
-    [%{time: first} | _] = sorted
-    %{time: last} = List.last(sorted)
-
-    chart_min = floor_to(DateTime.to_unix(first), @tick_interval_seconds)
-    chart_max = ceil_to(DateTime.to_unix(last), @tick_interval_seconds)
-    width = chart_max - chart_min
-
-    if width == 0 do
-      @plot_right
-    else
-      ratio = (DateTime.to_unix(last) - chart_min) / width
-      @plot_left + ratio * (@plot_right - @plot_left)
+      [%{time: first} | _] = data ->
+        %{time: last} = List.last(data)
+        Keyword.put(base, :custom_x_scale, truncated_time_scale(first, last))
     end
   end
 
-  # Floors `n` to the largest multiple of `step` that is ≤ n.
-  @spec floor_to(integer(), pos_integer()) :: integer()
-  defp floor_to(n, step), do: div(n, step) * step
+  # Builds a TimeScale whose left edge is rounded down to a tick boundary
+  # (Contex's default behavior) but whose right edge is truncated back to
+  # `last` — so the chart ends exactly at the latest measurement instead of
+  # extending out to the next 5-minute mark. `display_count` is recomputed
+  # so the now-removed trailing tick isn't generated.
+  @spec truncated_time_scale(DateTime.t(), DateTime.t()) :: TimeScale.t()
+  defp truncated_time_scale(first, last) do
+    scale = TimeScale.new() |> TimeScale.domain(first, last)
+    {nice_min, _} = scale.nice_domain
+    interval_ms = elem(scale.tick_interval, 2)
+    width_ms = DateTime.diff(last, nice_min, :millisecond)
+    count = div(width_ms, interval_ms)
 
-  # Ceilings `n` to the smallest multiple of `step` that is ≥ n.
-  @spec ceil_to(integer(), pos_integer()) :: integer()
-  defp ceil_to(n, step) do
-    case rem(n, step) do
-      0 -> n
-      _ -> (div(n, step) + 1) * step
-    end
+    struct(scale, nice_domain: {nice_min, last}, display_count: count)
   end
 
   # Post-processes a Contex SVG so it scales to its container.
