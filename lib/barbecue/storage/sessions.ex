@@ -5,7 +5,20 @@ defmodule Barbecue.Storage.Sessions do
 
   import Ecto.Query, warn: false
   alias Barbecue.Repo
-  alias Barbecue.Storage.Session
+  alias Barbecue.Storage.{Session, State}
+
+  @typedoc """
+  A session row with derived statistics from its measurements.
+  `started_at`, `ended_at`, and `duration_seconds` are nil when the session
+  has no measurements yet.
+  """
+  @type stats :: %{
+          id: integer(),
+          started_at: DateTime.t() | nil,
+          ended_at: DateTime.t() | nil,
+          duration_seconds: non_neg_integer() | nil,
+          measurement_count: non_neg_integer()
+        }
 
   @doc """
   Returns the most recently started session, or `nil` if none exist.
@@ -64,6 +77,31 @@ defmodule Barbecue.Storage.Sessions do
     Repo.all(from(s in Session, order_by: [desc: s.id]))
   end
 
+  @doc """
+  Lists all sessions with derived `started_at`, `ended_at`, `duration_seconds`,
+  and `measurement_count`. Newest first.
+
+  `started_at`/`ended_at` come from the min/max of the linked measurements'
+  `inserted_at`. Sessions with no measurements get nil for time fields.
+  """
+  @spec list_with_stats() :: [stats()]
+  def list_with_stats do
+    from(s in Session,
+      left_join: st in State,
+      on: st.session_id == s.id,
+      group_by: s.id,
+      order_by: [desc: s.id],
+      select: %{
+        id: s.id,
+        started_at: type(min(st.inserted_at), :utc_datetime),
+        ended_at: type(max(st.inserted_at), :utc_datetime),
+        measurement_count: count(st.id)
+      }
+    )
+    |> Repo.all()
+    |> Enum.map(&with_duration/1)
+  end
+
   ############################################################
   #                          Helpers                         #
   ############################################################
@@ -72,5 +110,13 @@ defmodule Barbecue.Storage.Sessions do
   @spec latest() :: Session.t() | nil
   defp latest do
     Repo.one(from(s in Session, order_by: [desc: s.id], limit: 1))
+  end
+
+  # Adds a `duration_seconds` field to a stats row.
+  @spec with_duration(map()) :: stats()
+  defp with_duration(%{started_at: nil} = row), do: Map.put(row, :duration_seconds, nil)
+
+  defp with_duration(%{started_at: s, ended_at: e} = row) do
+    Map.put(row, :duration_seconds, DateTime.diff(e, s, :second))
   end
 end

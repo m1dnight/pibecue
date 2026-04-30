@@ -18,6 +18,7 @@ defmodule BarbecueWeb.Router do
     pipe_through :browser
 
     live "/", Home
+    live "/sessions", Sessions
   end
 
   # Other scopes may use custom stacks.

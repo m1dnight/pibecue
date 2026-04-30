@@ -89,4 +89,49 @@ defmodule Barbecue.Storage.SessionsTest do
                Enum.find_index(ids, &(&1 == s1.id))
     end
   end
+
+  describe "list_with_stats/0" do
+    # Sessions without measurements should appear with nil time fields and
+    # zero count, so the UI can render an "empty" state for them.
+    test "returns nil times and zero count for an empty session" do
+      {:ok, session} = Sessions.start_new()
+
+      row = Sessions.list_with_stats() |> Enum.find(&(&1.id == session.id))
+
+      assert row.started_at == nil
+      assert row.ended_at == nil
+      assert row.duration_seconds == nil
+      assert row.measurement_count == 0
+    end
+
+    # When a session has measurements, started_at/ended_at must reflect the
+    # min/max of the measurements' inserted_at, and duration must be the gap
+    # between them.
+    test "computes started_at, ended_at, and duration from measurements" do
+      {:ok, session} = Sessions.start_new()
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      later = DateTime.add(now, 5, :second)
+
+      insert_state!(session.id, now)
+      insert_state!(session.id, later)
+
+      row = Sessions.list_with_stats() |> Enum.find(&(&1.id == session.id))
+
+      assert row.measurement_count == 2
+      assert DateTime.compare(row.started_at, now) == :eq
+      assert DateTime.compare(row.ended_at, later) == :eq
+      assert row.duration_seconds == 5
+    end
+  end
+
+  defp insert_state!(session_id, inserted_at) do
+    Repo.insert!(%State{
+      temperature: 100.0,
+      fan_speed: 0.5,
+      target_temperature: 110.0,
+      session_id: session_id,
+      inserted_at: inserted_at,
+      updated_at: inserted_at
+    })
+  end
 end
