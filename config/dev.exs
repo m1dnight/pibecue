@@ -15,6 +15,7 @@ config :barbecue, BarbecueWeb.Endpoint,
   debug_errors: true,
   secret_key_base: "sODMOCqDOBh6ykWCXcIW3Y19hDlM4b8Y99/ExyZPE6OeBEc7z+3FgbXlM/kqW2Vm",
   watchers: [
+    esbuild: {Esbuild, :install_and_run, [:default, ~w(--sourcemap=inline --watch)]},
     tailwind: {Tailwind, :install_and_run, [:default, ~w(--watch)]}
   ]
 

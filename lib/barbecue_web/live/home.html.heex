@@ -8,26 +8,111 @@
           <.icon name="hero-fire" class="h-4 w-4" /> Current
         </div>
         <div class="flex items-baseline gap-3 mt-1">
-          <span class={"text-6xl sm:text-7xl font-bold tabular-nums " <> zone_color(@system_state.temperature, @system_state.target_temperature)}>
+          <span class={"text-6xl sm:text-7xl font-bold tabular-nums " <> Temperature.zone_color(@system_state.temperature, @system_state.target_temperature)}>
             {Float.round(@system_state.temperature, 1)}
           </span>
           <span class="text-2xl text-slate-400 font-medium">°C</span>
           <.icon
-            name={trend_icon(@trend)}
-            class={"h-7 w-7 ml-1 " <> trend_color(@trend)}
+            name={Trend.icon(@trend)}
+            class={"h-7 w-7 ml-1 " <> Trend.color(@trend)}
           />
         </div>
       </div>
 
-      <div class="text-right">
-        <div class="text-xs uppercase tracking-wider text-slate-500">Target</div>
+      <button
+        type="button"
+        phx-click="open-dial"
+        class="text-right rounded-xl px-4 py-2 hover:bg-slate-50 active:bg-slate-100 transition-colors group"
+      >
+        <div class="text-xs uppercase tracking-wider text-slate-500 flex items-center justify-end gap-1">
+          Target <.icon name="hero-pencil-square" class="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
         <div class="text-3xl font-semibold text-slate-700 tabular-nums">
           {Float.round(@system_state.target_temperature, 1)}<span class="text-slate-400">°C</span>
         </div>
         <div :if={@system_state.target_temperature > 0} class="text-sm text-slate-500 mt-1">
-          {format_delta(@system_state.temperature - @system_state.target_temperature)} from target
+          {Temperature.format_delta(@system_state.temperature - @system_state.target_temperature)} from target
+        </div>
+      </button>
+    </div>
+  </div>
+
+<!-- Dial modal -->
+  <div
+    :if={@dial_open?}
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+  >
+    <div
+      class="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl"
+      phx-click-away="close-dial"
+    >
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-semibold text-slate-800">Target Temperature</h3>
+        <button
+          type="button"
+          phx-click="close-dial"
+          class="w-9 h-9 rounded-full hover:bg-slate-100 flex items-center justify-center"
+          aria-label="Close"
+        >
+          <.icon name="hero-x-mark" class="h-5 w-5 text-slate-500" />
+        </button>
+      </div>
+
+      <div
+        id="temp-dial"
+        phx-hook="TempDial"
+        phx-update="ignore"
+        data-min="50"
+        data-max="250"
+        data-value={trunc(@system_state.target_temperature)}
+        class="relative mx-auto select-none touch-none"
+        style="width: 300px; height: 300px;"
+      >
+        <svg viewBox="0 0 300 300" class="w-full h-full">
+<!-- background track -->
+          <path
+            d="M 65.15 235 A 120 120 0 1 1 234.85 235"
+            stroke="#e2e8f0"
+            stroke-width="20"
+            fill="none"
+            stroke-linecap="round"
+          />
+<!-- active fill (drawn by hook) -->
+          <path
+            data-dial-fill
+            d=""
+            stroke="#10b981"
+            stroke-width="20"
+            fill="none"
+            stroke-linecap="round"
+          />
+<!-- thumb (positioned by hook) -->
+          <circle
+            data-dial-thumb
+            cx="65.15"
+            cy="235"
+            r="16"
+            fill="#10b981"
+            stroke="white"
+            stroke-width="4"
+            class="drop-shadow"
+          />
+        </svg>
+        <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <div data-dial-value class="text-5xl font-bold text-slate-800 tabular-nums">
+            {trunc(@system_state.target_temperature)}°C
+          </div>
+          <div class="text-sm text-slate-400 mt-2">Drag to set</div>
         </div>
       </div>
+
+      <button
+        type="button"
+        phx-click="close-dial"
+        class="mt-6 w-full h-12 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
+      >
+        Done
+      </button>
     </div>
   </div>
 
@@ -50,19 +135,13 @@
           <.icon name="hero-minus" class="h-6 w-6" />
         </button>
 
-        <form phx-change="temperature" class="flex-1">
-          <input
-            type="number"
-            name="temperature"
-            inputmode="numeric"
-            value={trunc(@system_state.target_temperature)}
-            min="0"
-            max="300"
-            step="1"
-            phx-debounce="500"
-            class="w-full h-12 text-center text-2xl font-semibold tabular-nums rounded-xl border-slate-200 focus:border-emerald-500 focus:ring-emerald-500"
-          />
-        </form>
+        <button
+          type="button"
+          phx-click="open-dial"
+          class="flex-1 h-12 rounded-xl bg-slate-50 hover:bg-slate-100 active:bg-slate-200 text-2xl font-semibold tabular-nums text-slate-800 transition-colors"
+        >
+          {trunc(@system_state.target_temperature)}°
+        </button>
 
         <button
           type="button"
@@ -151,7 +230,7 @@
         </div>
       </div>
       <div class="w-full">
-        {build_pointplot(
+        {Chart.build(
           @session_data.result,
           ["temperature", "target_temperature"],
           "°C",
@@ -168,7 +247,7 @@
         <div class="text-xs text-slate-500">last 30 min</div>
       </div>
       <div class="w-full">
-        {build_pointplot(@session_data.result, ["fan_speed"], "RPM", ["f59e0b"])}
+        {Chart.build(@session_data.result, ["fan_speed"], "RPM", ["f59e0b"])}
       </div>
     </div>
   </div>
