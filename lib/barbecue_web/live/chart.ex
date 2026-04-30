@@ -12,7 +12,18 @@ defmodule BarbecueWeb.Live.Chart do
 
   # Extra right padding (in viewBox units) so the last x-axis tick label
   # doesn't get clipped at the SVG edge.
-  @right_padding 30
+  @right_padding 60
+
+  # Plot-area bounds within the SVG, derived from Contex's defaults for a
+  # 1000x300 LinePlot. Used to position the "current time" indicator.
+  @plot_left 90
+  @plot_right 990
+  @plot_top 10
+  @plot_bottom 230
+
+  # Tick interval Contex uses for our 30-min window (5 minutes). Used for
+  # rounding when computing the now-marker x-position.
+  @tick_interval_seconds 300
 
   @doc """
   Builds an inline responsive SVG line plot from `session_data`.
@@ -27,24 +38,24 @@ defmodule BarbecueWeb.Live.Chart do
   def build([], _keys, _label, _palette), do: Phoenix.HTML.raw("")
 
   def build(session_data, keys, label, palette) do
-    Plot.new(build_dataset(session_data, keys), LinePlot, @width, @height, options(keys, palette))
+    sorted = Enum.sort_by(session_data, & &1.time, {:asc, DateTime})
+    now_x = now_marker_x(sorted)
+
+    Plot.new(build_dataset(sorted, keys), LinePlot, @width, @height, options(keys, palette))
     |> Plot.axis_labels("", label)
     |> Plot.to_svg()
     |> responsive_svg()
+    |> inject_now_marker(now_x)
   end
 
   ############################################################
   #                          Helpers                         #
   ############################################################
 
-  # Builds a Contex Dataset from session bucket maps, sorted by time ascending.
+  # Builds a Contex Dataset from session bucket maps (already sorted).
   @spec build_dataset([map()], [String.t()]) :: Dataset.t()
   defp build_dataset(session_data, keys) do
-    rows =
-      session_data
-      |> Enum.sort_by(& &1.time, {:asc, DateTime})
-      |> Enum.map(&to_chart_row/1)
-
+    rows = Enum.map(session_data, &to_chart_row/1)
     Dataset.new(rows, ["time" | keys])
   end
 
@@ -59,7 +70,8 @@ defmodule BarbecueWeb.Live.Chart do
     }
   end
 
-  # Builds the Contex chart options for a given series and palette.
+  # Builds the Contex chart options. Lets Contex handle nice tick rounding;
+  # we compensate for the resulting overshoot in `drop_overshoot_tick/2`.
   @spec options([String.t()], [String.t()]) :: keyword()
   defp options(keys, palette) do
     [
@@ -69,6 +81,40 @@ defmodule BarbecueWeb.Live.Chart do
       legend_setting: :legend_none,
       smoothed: false
     ]
+  end
+
+  # Computes the x-coordinate for the now-marker based on where the latest
+  # measurement falls inside Contex's nice-rounded x-axis range.
+  @spec now_marker_x([map()]) :: float()
+  defp now_marker_x([]), do: @plot_right
+
+  defp now_marker_x(sorted) do
+    [%{time: first} | _] = sorted
+    %{time: last} = List.last(sorted)
+
+    chart_min = floor_to(DateTime.to_unix(first), @tick_interval_seconds)
+    chart_max = ceil_to(DateTime.to_unix(last), @tick_interval_seconds)
+    width = chart_max - chart_min
+
+    if width == 0 do
+      @plot_right
+    else
+      ratio = (DateTime.to_unix(last) - chart_min) / width
+      @plot_left + ratio * (@plot_right - @plot_left)
+    end
+  end
+
+  # Floors `n` to the largest multiple of `step` that is ≤ n.
+  @spec floor_to(integer(), pos_integer()) :: integer()
+  defp floor_to(n, step), do: div(n, step) * step
+
+  # Ceilings `n` to the smallest multiple of `step` that is ≥ n.
+  @spec ceil_to(integer(), pos_integer()) :: integer()
+  defp ceil_to(n, step) do
+    case rem(n, step) do
+      0 -> n
+      _ -> (div(n, step) + 1) * step
+    end
   end
 
   # Post-processes a Contex SVG so it scales to its container.
@@ -121,5 +167,16 @@ defmodule BarbecueWeb.Live.Chart do
       [_, value] -> value
       _ -> nil
     end
+  end
+
+  # Injects a dotted vertical line at `x` to mark "now" — the latest
+  # measurement's position within the chart's nice-rounded x-axis.
+  @spec inject_now_marker(Phoenix.HTML.safe(), float()) :: Phoenix.HTML.safe()
+  defp inject_now_marker({:safe, svg}, x) do
+    line =
+      ~s|<line x1="#{x}" y1="#{@plot_top}" x2="#{x}" y2="#{@plot_bottom}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3" />|
+
+    svg = svg |> IO.iodata_to_binary() |> String.replace("</svg>", "#{line}</svg>")
+    Phoenix.HTML.raw(svg)
   end
 end
